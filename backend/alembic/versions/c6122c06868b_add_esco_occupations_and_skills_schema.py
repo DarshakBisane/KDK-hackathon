@@ -50,16 +50,27 @@ def upgrade() -> None:
     op.create_index(op.f('ix_occupation_skills_occupation_id'), 'occupation_skills', ['occupation_id'], unique=False)
     op.create_index(op.f('ix_occupation_skills_relation_type'), 'occupation_skills', ['relation_type'], unique=False)
     op.create_index(op.f('ix_occupation_skills_skill_id'), 'occupation_skills', ['skill_id'], unique=False)
-    op.add_column('skills', sa.Column('esco_uri', sa.String(length=500), nullable=True))
-    op.add_column('skills', sa.Column('title', sa.String(length=255), nullable=True))
-    op.add_column('skills', sa.Column('skill_type', sa.String(length=100), nullable=True))
-    op.add_column('skills', sa.Column('language', sa.String(length=10), nullable=True))
-    op.alter_column('skills', 'name',
-               existing_type=sa.VARCHAR(length=100),
-               type_=sa.String(length=255),
-               existing_nullable=False)
-    op.create_index(op.f('ix_skills_esco_uri'), 'skills', ['esco_uri'], unique=True)
-    op.create_index(op.f('ix_skills_title'), 'skills', ['title'], unique=False)
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        with op.batch_alter_table("skills") as batch_op:
+            batch_op.add_column(sa.Column('esco_uri', sa.String(length=500), nullable=True))
+            batch_op.add_column(sa.Column('title', sa.String(length=255), nullable=True))
+            batch_op.add_column(sa.Column('skill_type', sa.String(length=100), nullable=True))
+            batch_op.add_column(sa.Column('language', sa.String(length=10), nullable=True))
+            batch_op.alter_column('name', existing_type=sa.VARCHAR(length=100), type_=sa.String(length=255), existing_nullable=False)
+            batch_op.create_index(batch_op.f('ix_skills_esco_uri'), ['esco_uri'], unique=True)
+            batch_op.create_index(batch_op.f('ix_skills_title'), ['title'], unique=False)
+    else:
+        op.add_column('skills', sa.Column('esco_uri', sa.String(length=500), nullable=True))
+        op.add_column('skills', sa.Column('title', sa.String(length=255), nullable=True))
+        op.add_column('skills', sa.Column('skill_type', sa.String(length=100), nullable=True))
+        op.add_column('skills', sa.Column('language', sa.String(length=10), nullable=True))
+        op.alter_column('skills', 'name',
+                   existing_type=sa.VARCHAR(length=100),
+                   type_=sa.String(length=255),
+                   existing_nullable=False)
+        op.create_index(op.f('ix_skills_esco_uri'), 'skills', ['esco_uri'], unique=True)
+        op.create_index(op.f('ix_skills_title'), 'skills', ['title'], unique=False)
     # ### end Alembic commands ###
 
 
