@@ -10,6 +10,13 @@ db_url = settings.DATABASE_URL.strip()
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
+# Guard against accidental/silent SQLite fallback in production
+if settings.ENVIRONMENT.lower() == "production" and db_url.startswith("sqlite"):
+    raise RuntimeError(
+        "CRITICAL CONFIGURATION ERROR: Production environment is configured with SQLite. "
+        "A valid PostgreSQL DATABASE_URL (e.g. Neon) must be configured in production."
+    )
+
 # Configure engine parameters based on database type
 if db_url.startswith("sqlite"):
     engine = create_engine(

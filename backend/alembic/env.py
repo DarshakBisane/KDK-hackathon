@@ -28,8 +28,12 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    settings = get_settings()
-    db_url = settings.DATABASE_URL.strip()
+    custom_url = config.get_main_option("sqlalchemy.url")
+    if custom_url and not custom_url.startswith("%"):
+        db_url = custom_url.strip()
+    else:
+        settings = get_settings()
+        db_url = settings.DATABASE_URL.strip()
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     return db_url
