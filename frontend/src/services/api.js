@@ -86,4 +86,9 @@ export const roadmapApi = {
   updateItemStatus: (id, status) => api.put(`/roadmap/${id}`, { status }),
 };
 
+export const industryApi = {
+  getInsights: (career) => (career ? api.get(`/industry/${encodeURIComponent(career)}`) : api.get('/industry')),
+  updateSkills: (career) => api.post('/industry/update', { career }),
+};
+
 export default api;

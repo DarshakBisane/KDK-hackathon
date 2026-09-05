@@ -1,6 +1,6 @@
 import json
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import httpx
 from fastapi import HTTPException, status
 from app.config import get_settings
@@ -30,6 +30,26 @@ JSON Schema format required:
 
 Resume Text:
 \"\"\"{resume_text}\"\"\"
+"""
+
+JOB_SKILL_EXTRACTION_PROMPT = """
+You are an expert technical recruiter and job skill extraction system.
+
+Analyze the following job title and description and extract all explicit and essential technical, programming, framework, tool, and domain skills required.
+
+Rules:
+1. Extract ONLY distinct skills relevant to the role.
+2. Normalize common abbreviations (e.g., "ML" -> "Machine Learning", "K8s" -> "Kubernetes").
+3. Return ONLY a valid JSON object without conversational text.
+
+Format:
+{
+  "skills": ["Skill1", "Skill2", "Skill3"]
+}
+
+Job Title: {job_title}
+Job Description:
+{job_description}
 """
 
 
@@ -64,6 +84,27 @@ def clean_json_response(raw_text: str) -> Dict[str, Any]:
         raise ValueError("Failed to parse structured JSON from Gemini response.")
 
 
+def _fallback_extract_skills_from_text(text: str) -> List[str]:
+    """
+    Deterministic regex keyword extractor as safe fallback when LLM is unavailable.
+    """
+    known_keywords = [
+        "Python", "SQL", "Machine Learning", "Deep Learning", "Scikit-learn",
+        "Pandas", "NumPy", "Docker", "Kubernetes", "MLflow", "PyTorch", "TensorFlow",
+        "FastAPI", "React", "TypeScript", "JavaScript", "HTML", "CSS", "Tailwind CSS",
+        "PostgreSQL", "MongoDB", "Redis", "AWS", "Linux", "Git", "REST API",
+        "Power BI", "Excel", "Tableau", "Data Visualization", "Statistics",
+        "CI/CD", "Cybersecurity", "Network Security", "Model Monitoring", "dbt"
+    ]
+    found = []
+    text_lower = text.lower()
+    for kw in known_keywords:
+        pattern = r"\b" + re.escape(kw.lower()) + r"\b"
+        if re.search(pattern, text_lower):
+            found.append(kw)
+    return found
+
+
 async def extract_resume_info(resume_text: str) -> ResumeExtraction:
     """
     Calls the Gemini API to extract structured resume data.
@@ -83,7 +124,6 @@ async def extract_resume_info(resume_text: str) -> ResumeExtraction:
         "gemini-2.0-flash",
         "gemini-1.5-flash",
     ]
-    # Remove duplicates while preserving order
     models_to_try = list(dict.fromkeys(models_to_try))
 
     prompt_content = RESUME_EXTRACTION_PROMPT.replace("{resume_text}", resume_text)
@@ -142,3 +182,42 @@ async def extract_resume_info(resume_text: str) -> ResumeExtraction:
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail=f"Unable to analyze the resume with Gemini AI right now. Please try again. ({last_error_msg[:120]})"
     )
+
+
+async def extract_job_skills(job_title: str, job_description: str, explicit_skills: Optional[List[str]] = None) -> List[str]:
+    """
+    Extracts structured technical skills from a job posting using Gemini AI,
+    with robust fallback to explicit_skills or regex/keyword matching.
+    """
+    if explicit_skills and len(explicit_skills) > 0:
+        return explicit_skills
+
+    api_key = settings.GEMINI_API_KEY
+    if not api_key or api_key.strip() == "" or "your_api_key" in api_key.lower():
+        return _fallback_extract_skills_from_text(f"{job_title} {job_description}")
+
+    prompt_content = JOB_SKILL_EXTRACTION_PROMPT.replace("{job_title}", job_title).replace("{job_description}", job_description)
+
+    payload = {
+        "contents": [{"parts": [{"text": prompt_content}]}],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent?key={api_key}"
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
+                data = response.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        parsed = clean_json_response(parts[0].get("text", ""))
+                        extracted = parsed.get("skills", [])
+                        if isinstance(extracted, list) and len(extracted) > 0:
+                            return [str(s).strip() for s in extracted if str(s).strip()]
+    except Exception:
+        pass
+
+    return _fallback_extract_skills_from_text(f"{job_title} {job_description}")

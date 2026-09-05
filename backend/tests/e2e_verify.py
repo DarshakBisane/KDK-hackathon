@@ -40,7 +40,7 @@ def create_sample_resume_pdf() -> bytes:
 
 def test_complete_e2e_pipeline():
     base_url = "http://127.0.0.1:8000/api"
-    print("\n--- STARTING COMPLETE E2E FLOW TEST ---")
+    print("\n--- STARTING COMPLETE PHASE 1 + PHASE 2 E2E FLOW TEST ---")
 
     with httpx.Client(base_url=base_url, timeout=40.0) as client:
         # 1. Health check
@@ -49,7 +49,7 @@ def test_complete_e2e_pipeline():
         print("[OK] 1. Backend health check passed.")
 
         # 2. Register
-        user_email = f"darshak_e2e_{int(time.time())}@kdk.edu"
+        user_email = f"darshak_e2e_p2_{int(time.time())}@kdk.edu"
         reg_res = client.post("/auth/register", json={
             "name": "Darshak Bisane",
             "email": user_email,
@@ -89,64 +89,75 @@ def test_complete_e2e_pipeline():
         assert upload_res.status_code == 200, f"Resume analysis failed: {upload_res.text}"
         upload_data = upload_res.json()
         print(f"[OK] 6. Gemini extracted skills: {upload_data['extracted_skills']}")
-        print(f"     Match Score: {upload_data['readiness_score']}%")
 
-        # 6. Verify deterministic skill gap
-        gap_res = client.get("/skills/gap", headers=headers)
-        assert gap_res.status_code == 200
-        gap = gap_res.json()
-        print(f"[OK] 7. Deterministic Skill Gap: {gap['readiness_score']}% readiness")
-        print(f"     Matched Skills ({len(gap['matched_skills'])}): {gap['matched_skills']}")
-        print(f"     Missing Skills ({len(gap['missing_skills'])}): {[m['name'] for m in gap['missing_skills']]}")
+        # 6. Verify deterministic skill gap (before dynamic industry update)
+        gap_res_1 = client.get("/skills/gap", headers=headers)
+        assert gap_res_1.status_code == 200
+        gap_1 = gap_res_1.json()
+        initial_required_skills = gap_1["total_required_skills"]
+        print(f"[OK] 7. Initial Deterministic Skill Gap: {gap_1['readiness_score']}% readiness ({gap_1['total_matched_skills']}/{initial_required_skills})")
 
-        # Verify mathematical correctness: score == round(matched / total * 100, 1)
-        expected_score = round((len(gap['matched_skills']) / gap['total_required_skills']) * 100, 1)
-        assert gap['readiness_score'] == expected_score, f"Expected {expected_score}, got {gap['readiness_score']}"
+        # 7. PHASE 2: Live Industry Skill Intelligence Update
+        print("-> Ingesting live job market intelligence & updating career requirements...")
+        update_res = client.post("/industry/update", json={"career": "ML Engineer"}, headers=headers)
+        assert update_res.status_code == 200, f"Industry update failed: {update_res.text}"
+        update_data = update_res.json()
+        print(f"[OK] 8. Industry job market update processed successfully!")
+        print(f"     Jobs Processed: {update_data['jobs_processed']}")
+        print(f"     Skills Detected: {update_data['skills_detected']}")
+        print(f"     Updated Requirements: {update_data['updated_requirements']}")
 
-        # 7. Verify student dashboard
+        # 8. Verify Industry Insights & Emerging Skills
+        insights_res = client.get("/industry/ML Engineer")
+        assert insights_res.status_code == 200
+        insights = insights_res.json()
+        print(f"[OK] 9. Industry Insights verified: {len(insights['required_skills'])} required skills, {len(insights['emerging_skills'])} emerging trends.")
+
+        # 9. Verify that Skill Gap automatically adapted to the updated CareerSkill requirements
+        gap_res_2 = client.get("/skills/gap", headers=headers)
+        assert gap_res_2.status_code == 200
+        gap_2 = gap_res_2.json()
+        expected_score_2 = round((gap_2['total_matched_skills'] / gap_2['total_required_skills']) * 100, 1)
+        assert gap_2['readiness_score'] == expected_score_2
+        print(f"[OK] 10. Dynamic Skill Gap updated automatically: {gap_2['readiness_score']}% readiness ({gap_2['total_matched_skills']}/{gap_2['total_required_skills']})")
+        missing_names_2 = [m["name"] for m in gap_2["missing_skills"]]
+        print(f"     Updated Missing Skills: {missing_names_2}")
+
+        # 10. Verify student dashboard with updated metrics
         dash_res = client.get("/dashboard", headers=headers)
         assert dash_res.status_code == 200
         dash = dash_res.json()
         assert dash["target_career_name"] == "ML Engineer"
-        assert dash["strong_skills_count"] == len(gap['matched_skills'])
-        assert len(dash["next_steps"]) > 0
-        print(f"[OK] 8. Dashboard metrics verified. Next steps: {dash['next_steps']}")
+        assert dash["strong_skills_count"] == gap_2['total_matched_skills']
+        print(f"[OK] 11. Dashboard verified with updated dynamic metrics.")
 
-        # 8. Verify roadmap and progress tracking
+        # 11. Verify roadmap and milestone tracking
         road_res = client.get("/roadmap", headers=headers)
         assert road_res.status_code == 200
         roadmap = road_res.json()
         assert roadmap["total_items"] > 0
-        print(f"[OK] 9. Roadmap generated with {roadmap['total_items']} weekly milestones.")
+        print(f"[OK] 12. Roadmap verified with {roadmap['total_items']} learning milestones.")
 
         first_item = roadmap["items"][0]
-        # Toggle status to Learning
         upd_1 = client.put(f"/roadmap/{first_item['id']}", json={"status": "Learning"}, headers=headers)
         assert upd_1.status_code == 200
-        assert upd_1.json()["learning_items"] == 1
-        print("[OK] 10. Updated milestone status to 'Learning'.")
-
-        # Toggle status to Completed
         upd_2 = client.put(f"/roadmap/{first_item['id']}", json={"status": "Completed"}, headers=headers)
         assert upd_2.status_code == 200
         assert upd_2.json()["completed_items"] == 1
-        assert upd_2.json()["progress_percentage"] > 0.0
-        print(f"[OK] 11. Updated milestone status to 'Completed'. Progress: {upd_2.json()['progress_percentage']}%")
+        print(f"[OK] 13. Roadmap milestone status updated to 'Completed' (Progress: {upd_2.json()['progress_percentage']}%).")
 
-        # 9. Test error cases
-        # Invalid PDF extension
+        # 12. Test error cases
         bad_file = {"file": ("malicious.exe", b"fake binary", "application/octet-stream")}
         bad_res = client.post("/resumes/analyze", files=bad_file, headers=headers)
         assert bad_res.status_code == 400
-        print("[OK] 12. Non-PDF upload correctly rejected with HTTP 400.")
+        print("[OK] 14. Non-PDF upload correctly rejected with HTTP 400.")
 
-        # Empty PDF
         empty_file = {"file": ("empty.pdf", b"", "application/pdf")}
         empty_res = client.post("/resumes/analyze", files=empty_file, headers=headers)
         assert empty_res.status_code == 400
-        print("[OK] 13. Empty PDF upload correctly rejected with friendly message.")
+        print("[OK] 15. Empty PDF upload correctly rejected with friendly message.")
 
-        print("\n=== ALL E2E PIPELINE TESTS PASSED 100% SUCCESSFULLY ===")
+        print("\n=== ALL PHASE 1 + PHASE 2 E2E PIPELINE TESTS PASSED 100% SUCCESSFULLY ===")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from app.config import get_settings
 from app.database.session import Base, engine, SessionLocal
 from app.database.seed import seed_database
-from app.api import auth, users, careers, resumes, skills, dashboard, roadmap
+from app.api import auth, users, careers, resumes, skills, dashboard, roadmap, industry, esco
 
 settings = get_settings()
 
@@ -75,6 +75,8 @@ app.include_router(resumes.router, prefix="/api")
 app.include_router(skills.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(roadmap.router, prefix="/api")
+app.include_router(industry.router, prefix="/api")
+app.include_router(esco.router, prefix="/api")
 
 
 @app.get("/api/health")

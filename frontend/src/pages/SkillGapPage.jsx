@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Target, CheckCircle2, AlertCircle, Compass, FileUp, Briefcase } from 'lucide-react';
-import { skillApi } from '../services/api';
+import { Target, CheckCircle2, AlertCircle, Compass, FileUp, Briefcase, Sparkles, RefreshCw, TrendingUp, ShieldCheck } from 'lucide-react';
+import { skillApi, industryApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/PageHeader';
@@ -14,28 +14,61 @@ import { EmptyState } from '../components/EmptyState';
 
 export const SkillGapPage = () => {
   const [gapData, setGapData] = useState(null);
+  const [industryInsights, setIndustryInsights] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpdatingIndustry, setIsUpdatingIndustry] = useState(false);
 
   const { user } = useAuth();
-  const { showError } = useToast();
+  const { showSuccess, showError } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchSkillGap = async () => {
-      try {
-        const response = await skillApi.getSkillGap();
-        setGapData(response.data);
-      } catch (err) {
-        showError(err.userMessage || 'Failed to calculate skill gap.');
-      } finally {
-        setIsLoading(false);
+  const loadAllData = async () => {
+    try {
+      const gapRes = await skillApi.getSkillGap();
+      setGapData(gapRes.data);
+
+      if (gapRes.data && gapRes.data.target_career_name) {
+        try {
+          const industryRes = await industryApi.getInsights(gapRes.data.target_career_name);
+          setIndustryInsights(industryRes.data);
+        } catch (err) {
+          // Non-critical if insights endpoint is empty initially
+        }
       }
-    };
-    fetchSkillGap();
-  }, [showError]);
+    } catch (err) {
+      showError(err.userMessage || 'Failed to calculate skill gap.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  const handleUpdateIndustrySkills = async () => {
+    if (!gapData?.target_career_name) return;
+    setIsUpdatingIndustry(true);
+    try {
+      const res = await industryApi.updateSkills(gapData.target_career_name);
+      const newSkillsCount = res.data?.new_skills?.length || 0;
+      const updatedReqsCount = res.data?.updated_requirements?.length || 0;
+
+      showSuccess(
+        `Industry market intelligence processed! ${res.data.jobs_processed} live postings scanned. Updated ${updatedReqsCount} career requirements.`
+      );
+
+      // Reload gap data & insights
+      await loadAllData();
+    } catch (err) {
+      showError(err.userMessage || 'Failed to update industry skill intelligence.');
+    } finally {
+      setIsUpdatingIndustry(false);
+    }
+  };
 
   if (isLoading) {
-    return <LoadingSpinner message="Calculating deterministic skill gap..." fullPage />;
+    return <LoadingSpinner message="Calculating dynamic skill gap..." fullPage />;
   }
 
   // Handle empty state: no career selected
@@ -70,7 +103,7 @@ export const SkillGapPage = () => {
       {/* Header */}
       <PageHeader
         title="Your Skill Gap Analysis"
-        subtitle={`Deterministic gap evaluation against the ${gapData.target_career_name} requirement profile.`}
+        subtitle={`Dynamic market gap evaluation against the ${gapData.target_career_name} requirement profile.`}
         action={
           <Button
             variant="primary"
@@ -84,7 +117,7 @@ export const SkillGapPage = () => {
       />
 
       {/* TOP READINESS CARD */}
-      <Card className="p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 bg-white border-border-subtle">
+      <Card className="p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 bg-white border-border-subtle shadow-sm">
         <div className="flex flex-col gap-2 text-center sm:text-left">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-lavender text-brand text-xs font-semibold w-fit mx-auto sm:mx-0">
             <Target className="w-3.5 h-3.5" />
@@ -95,7 +128,7 @@ export const SkillGapPage = () => {
           </h2>
           <p className="text-xs text-text-secondary max-w-md leading-relaxed">
             You match <strong>{gapData.total_matched_skills}</strong> out of{' '}
-            <strong>{gapData.total_required_skills}</strong> core skills required for this career track.
+            <strong>{gapData.total_required_skills}</strong> validated industry skills required for this career track.
           </p>
           <div className="flex items-center gap-4 text-xs text-text-secondary mt-2">
             <span className="flex items-center gap-1.5">
@@ -115,6 +148,102 @@ export const SkillGapPage = () => {
           progress={gapData.readiness_score}
           className="flex-shrink-0"
         />
+      </Card>
+
+      {/* PHASE 2: DYNAMIC INDUSTRY SKILL INTELLIGENCE CARD */}
+      <Card className="p-6 border-brand/20 bg-gradient-to-br from-white via-indigo-50/20 to-lavender/10 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-border-subtle">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-brand text-white flex items-center justify-center shadow-sm">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-text-primary flex items-center gap-2">
+                Dynamic Industry Skill Intelligence
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-mint text-mint-text font-semibold uppercase tracking-wider">
+                  Live Market
+                </span>
+              </h3>
+              <p className="text-xs text-text-secondary">
+                Requirements automatically evolve based on verified job market postings & AI evidence.
+              </p>
+            </div>
+          </div>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleUpdateIndustrySkills}
+            disabled={isUpdatingIndustry}
+            icon={RefreshCw}
+            className="flex-shrink-0 bg-white hover:bg-slate-50 border-brand/30 text-brand"
+          >
+            {isUpdatingIndustry ? 'Processing Job Postings...' : 'Update Industry Skills'}
+          </Button>
+        </div>
+
+        {/* Market Insights Breakdown */}
+        {industryInsights && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+            {/* Validated Required Skills */}
+            <div className="p-4 rounded-xl bg-white border border-border-subtle">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-brand" />
+                  Validated Market Requirements
+                </span>
+                <span className="text-[11px] font-semibold text-text-secondary">
+                  {industryInsights.required_skills?.length || 0} skills
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                {industryInsights.required_skills?.map((s) => (
+                  <span
+                    key={s.name}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 font-medium flex items-center gap-1"
+                  >
+                    {s.name}
+                    <span className="text-[10px] text-text-secondary opacity-75">
+                      ({Math.round((s.confidence || 0.9) * 100)}%)
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Emerging Skills */}
+            <div className="p-4 rounded-xl bg-white border border-border-subtle">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  Emerging Industry Trends
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
+                  {industryInsights.emerging_skills?.length || 0} candidate skills
+                </span>
+              </div>
+              {industryInsights.emerging_skills && industryInsights.emerging_skills.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                  {industryInsights.emerging_skills.map((s) => (
+                    <span
+                      key={s.name}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/50 font-medium flex items-center gap-1.5"
+                    >
+                      <span>{s.name}</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 bg-emerald-200/60 rounded text-emerald-900">
+                        {s.mention_count} postings
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-text-secondary italic py-3">
+                  Click 'Update Industry Skills' to scan live job postings for emerging trends.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* 2 MAIN SECTIONS: YOU ALREADY HAVE & SKILLS TO DEVELOP */}

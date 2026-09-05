@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     
+    # Industry Job Market API
+    JOB_API_URL: str = ""
+    JOB_API_KEY: str = ""
+    JOB_INTELLIGENCE_MENTION_THRESHOLD_CANDIDATE: int = 3
+    JOB_INTELLIGENCE_MENTION_THRESHOLD_REQUIRED: int = 5
+    
+    # Official European Commission ESCO Web Service API
+    ESCO_API_BASE_URL: str = "https://ec.europa.eu/esco/api"
+    
     # CORS
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",

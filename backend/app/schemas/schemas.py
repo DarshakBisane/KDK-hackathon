@@ -139,3 +139,43 @@ class RoadmapProgressResponse(BaseModel):
     not_started_items: int
     progress_percentage: float
     items: List[RoadmapItemResponse]
+
+
+# Industry Intelligence Schemas (Phase 2)
+class IndustryUpdateRequest(BaseModel):
+    career: Optional[str] = None
+
+
+class IndustryUpdateResponse(BaseModel):
+    career: str
+    jobs_processed: int
+    skills_detected: List[str]
+    new_skills: List[str]
+    updated_requirements: List[str]
+    status: str
+
+
+class IndustrySkillDetail(BaseModel):
+    name: str
+    category: Optional[str] = "General"
+    importance: Optional[str] = "HIGH"
+    proficiency: Optional[str] = "Intermediate"
+    confidence: Optional[float] = 0.95
+
+
+class EmergingSkillDetail(BaseModel):
+    name: str
+    category: Optional[str] = "General"
+    mention_count: int
+    confidence: float
+    is_candidate: bool = True
+    sources: List[str] = []
+
+
+class IndustryInsightsResponse(BaseModel):
+    career: str
+    category: str
+    required_skills: List[IndustrySkillDetail]
+    emerging_skills: List[EmergingSkillDetail]
+    evidence_summary: List[Dict[str, Any]] = []
+    total_evidence_items: int = 0
