@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional, Union, List
 from dotenv import load_dotenv
 
 # Ensure .env is loaded from backend directory
@@ -41,6 +43,20 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
     ]
+    CORS_ORIGIN_REGEX: Optional[str] = r"https:\/\/.*\.vercel\.app"
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
     model_config = SettingsConfigDict(
         env_file=".env",
